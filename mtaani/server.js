@@ -40,7 +40,23 @@ ALTER TABLE businesses ADD COLUMN IF NOT EXISTS view_count INTEGER NOT NULL DEFA
 CREATE TABLE IF NOT EXISTS business_reports(id BIGSERIAL PRIMARY KEY,business_id BIGINT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,reason VARCHAR(40) NOT NULL,details VARCHAR(1000),status VARCHAR(20) NOT NULL DEFAULT 'open',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 CREATE INDEX IF NOT EXISTS business_reports_status_idx ON business_reports(status,created_at DESC);
 `);console.log('Mtaani database ready');}
-app.get('/health',async(req,res)=>{try{await pool.query('SELECT 1');res.json({ok:true,service:'Mtaani API',database:'connected'});}catch(e){res.status(503).json({ok:false});}});
+
+const assistantLimit=rateLimit({windowMs:10*60*1000,limit:12,standardHeaders:true,legacyHeaders:false,message:{error:'Assistant limit reached. Please wait a few minutes.'}});
+app.post('/api/assistant/chat',assistantLimit,async(req,res)=>{
+ try{
+  if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'Mtaani AI has not been connected yet. The app owner must configure the AI service.'});
+  const messages=Array.isArray(req.body.messages)?req.body.messages.slice(-10):[];
+  const input=messages.filter(m=>m&&['user','assistant'].includes(m.role)&&typeof m.content==='string').map(m=>({role:m.role,content:m.content.slice(0,1500)}));
+  if(!input.length||input[input.length-1].role!=='user')return res.status(400).json({error:'Enter a message to get started.'});
+  const upstream=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Authorization':'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-6.2-astra',store:false,max_output_tokens:650,instructions:'You are Mtaani Assistant, a friendly, concise helper inside a Kenyan neighbourhood and small-business app. Help with learning, planning, writing, everyday organisation, and general business ideas. Use Kenyan context and KSh when relevant. Do not claim you can see private account data or perform actions in the app. Never request passwords, API keys, payment details, or sensitive personal information. Do not provide professional legal, medical, or financial guarantees; encourage consulting a qualified trusted adult or professional for important decisions. Keep responses age-appropriate and safe.',input})});
+  const data=await upstream.json().catch(()=>({}));
+  if(!upstream.ok){console.error('AI provider error',upstream.status);return res.status(502).json({error:'The AI service could not answer just now. Please try again later.'});}
+  const reply=Array.isArray(data.output)?data.output.flatMap(x=>Array.isArray(x.content)?x.content:[]).filter(x=>x.type==='output_text').map(x=>x.text).join('\n').trim():'';
+  if(!reply)return res.status(502).json({error:'The AI service returned an empty reply. Please try again.'});
+  res.json({reply});
+ }catch(e){console.error('Assistant request failed',e);res.status(500).json({error:'Could not reach the AI assistant.'});}
+});
+\napp.get('/health',async(req,res)=>{try{await pool.query('SELECT 1');res.json({ok:true,service:'Mtaani API',database:'connected'});}catch(e){res.status(503).json({ok:false});}});
 app.post('/api/auth/register',authLimit,async(req,res)=>{try{const name=clean(req.body.name),mail=email(req.body.email),password=String(req.body.password||'');if(name.length<2||name.length>80||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)||password.length<10||password.length>72)return res.status(400).json({error:'Enter a valid name and email. Password must be at least 10 characters.'});const hash=await bcrypt.hash(password,12);const q=await pool.query('INSERT INTO users(name,email,password_hash) VALUES($1,$2,$3) RETURNING id,name,email,role,status',[name,mail,hash]);setAuth(res,q.rows[0]);res.status(201).json({user:q.rows[0]});}catch(e){if(e.code==='23505')return res.status(409).json({error:'An account with that email already exists.'});console.error(e);res.status(500).json({error:'Could not create account.'});}});
 app.post('/api/auth/login',authLimit,async(req,res)=>{try{const mail=email(req.body.email),password=String(req.body.password||'');const q=await pool.query('SELECT id,name,email,role,status,password_hash FROM users WHERE email=$1',[mail]);if(!q.rowCount||q.rows[0].status!=='active'||!(await bcrypt.compare(password,q.rows[0].password_hash)))return res.status(401).json({error:'Email or password is incorrect.'});const u=q.rows[0];setAuth(res,u);delete u.password_hash;res.json({user:u});}catch(e){res.status(500).json({error:'Sign-in failed.'});}});
 
