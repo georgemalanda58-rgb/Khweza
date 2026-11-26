@@ -6,6 +6,7 @@ const jwt=require('jsonwebtoken');
 const cookieParser=require('cookie-parser');
 const {Pool}=require('pg');
 const path=require('path');
+const fs=require('fs');
 const app=express();
 const PORT=process.env.PORT||10000;
 const pool=new Pool(process.env.PGHOST?{host:process.env.PGHOST,port:Number(process.env.PGPORT||5432),user:process.env.PGUSER,password:process.env.PGPASSWORD,database:process.env.PGDATABASE,max:10}: {connectionString:process.env.DATABASE_URL,ssl:process.env.NODE_ENV==='production'?{rejectUnauthorized:false}:false,max:10});
@@ -53,6 +54,7 @@ app.patch('/api/admin/businesses/:id/status',auth,admin,async(req,res)=>{const s
 app.get('/api/admin/users',auth,admin,async(req,res)=>{const q=await pool.query('SELECT id,name,email,role,status,created_at FROM users ORDER BY created_at DESC LIMIT 300');res.json({users:q.rows});});
 app.patch('/api/admin/users/:id/status',auth,admin,async(req,res)=>{const status=req.body.status;if(!['active','suspended'].includes(status))return res.status(400).json({error:'Invalid status.'});await pool.query('UPDATE users SET status=$1 WHERE id=$2',[status,req.params.id]);res.json({ok:true});});
 app.get('/api/owner/dashboard',auth,async(req,res)=>{const [businesses,enquiries]=await Promise.all([pool.query('SELECT * FROM businesses WHERE owner_id=$1 ORDER BY created_at DESC',[req.user.id]),pool.query('SELECT e.*,b.name business_name FROM enquiries e JOIN businesses b ON b.id=e.business_id WHERE b.owner_id=$1 ORDER BY e.created_at DESC LIMIT 100',[req.user.id])]);res.json({businesses:businesses.rows,enquiries:enquiries.rows});});
-app.use(express.static(path.join(__dirname,'public')));
-app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
+const publicDir=fs.existsSync(path.join(__dirname,'public'))?path.join(__dirname,'public'):__dirname;
+app.use(express.static(publicDir));
+app.get('*',(req,res)=>res.sendFile(path.join(publicDir,'index.html')));
 init().then(()=>app.listen(PORT,'0.0.0.0',()=>console.log('Mtaani listening on '+PORT))).catch(e=>{console.error(e);process.exit(1);});
