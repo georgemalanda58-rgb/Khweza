@@ -53,7 +53,7 @@ app.post('/api/assistant/chat',assistantLimit,async(req,res)=>{
   if(!upstream.ok){console.error('AI provider error',upstream.status);return res.status(502).json({error:'The AI service could not answer just now. Please try again later.'});}
   const output=Array.isArray(data.output)?data.output:[];
   const reply=output.flatMap(x=>Array.isArray(x.content)?x.content:[]).filter(x=>x.type==='output_text').map(x=>x.text).join('\\n').trim();
-  const citations=output.flatMap(x=>Array.isArray(x.content)?x.content:[]).flatMap(x=>Array.isArray(x.annotations)?x.annotations:[]).filter(a=>a.type==='url_citation'&&a.url&&/^https?:\\/\\//i.test(a.url)).map(a=>({title:String(a.title||a.url).slice(0,180),url:a.url})).filter((a,i,all)=>all.findIndex(b=>b.url===a.url)===i).slice(0,6);
+  const citations=output.flatMap(x=>Array.isArray(x.content)?x.content:[]).flatMap(x=>Array.isArray(x.annotations)?x.annotations:[]).filter(a=>a.type==='url_citation'&&a.url&&(String(a.url).startsWith('https://')||String(a.url).startsWith('http://'))).map(a=>({title:String(a.title||a.url).slice(0,180),url:a.url})).filter((a,i,all)=>all.findIndex(b=>b.url===a.url)===i).slice(0,6);
   if(!reply)return res.status(502).json({error:'The AI service returned an empty reply. Please try again.'});
   res.json({reply,citations});
  }catch(e){console.error('Assistant request failed',e);res.status(500).json({error:'Could not reach the AI assistant.'});}
