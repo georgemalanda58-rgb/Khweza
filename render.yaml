@@ -12,10 +12,26 @@ services:
         value: production
       - key: SESSION_SECRET
         generateValue: true
-      - key: DATABASE_URL
+      - key: PGHOST
         fromDatabase:
           name: mtaani-db
-          property: connectionString
+          property: host
+      - key: PGPORT
+        fromDatabase:
+          name: mtaani-db
+          property: port
+      - key: PGUSER
+        fromDatabase:
+          name: mtaani-db
+          property: user
+      - key: PGPASSWORD
+        fromDatabase:
+          name: mtaani-db
+          property: password
+      - key: PGDATABASE
+        fromDatabase:
+          name: mtaani-db
+          property: database
 databases:
   - name: mtaani-db
     databaseName: mtaani_db_5u6y
