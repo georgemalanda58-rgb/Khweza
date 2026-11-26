@@ -25,6 +25,21 @@ CREATE TABLE IF NOT EXISTS enquiries(id INTEGER PRIMARY KEY, name TEXT NOT NULL,
 if (!db.prepare('SELECT id FROM users LIMIT 1').get() && process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
   db.prepare('INSERT INTO users(email,password_hash,role) VALUES(?,?,?)').run(process.env.ADMIN_EMAIL.toLowerCase(), bcrypt.hashSync(process.env.ADMIN_PASSWORD, 12), 'admin');
 }
+if (!db.prepare('SELECT id FROM updates LIMIT 1').get()) {
+  const add = db.prepare('INSERT INTO updates(title,body,published) VALUES(?,?,0)');
+  [
+    ['SAMPLE — Welcome to Khweza','This is placeholder content for the hotel team to review and replace with an approved announcement. It is not published to guests.'],
+    ['SAMPLE — Hotel information','Add current check-in guidance, facilities information and guest notices here. Replace this text before publishing.']
+  ].forEach(x => add.run(...x));
+}
+if (!db.prepare('SELECT id FROM menu LIMIT 1').get()) {
+  const add = db.prepare('INSERT INTO menu(name,description,price,published) VALUES(?,?,?,0)');
+  [
+    ['SAMPLE — Breakfast','Placeholder menu item. Replace with the hotel-approved breakfast description.','Confirm with hotel'],
+    ['SAMPLE — Lunch special','Placeholder menu item. Replace with the current restaurant offering.','Confirm with hotel'],
+    ['SAMPLE — Hot beverage','Placeholder menu item. Replace with the actual drinks menu.','Confirm with hotel']
+  ].forEach(x => add.run(...x));
+}
 if (!db.prepare('SELECT id FROM rooms LIMIT 1').get()) {
   const add = db.prepare('INSERT INTO rooms(name,description,price,image,published) VALUES(?,?,?,?,1)');
   [
