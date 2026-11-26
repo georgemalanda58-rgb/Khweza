@@ -8,7 +8,7 @@ const {Pool}=require('pg');
 const path=require('path');
 const app=express();
 const PORT=process.env.PORT||10000;
-const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.NODE_ENV==='production'?{rejectUnauthorized:false}:false,max:10});
+const pool=new Pool(process.env.PGHOST?{host:process.env.PGHOST,port:Number(process.env.PGPORT||5432),user:process.env.PGUSER,password:process.env.PGPASSWORD,database:process.env.PGDATABASE,max:10}: {connectionString:process.env.DATABASE_URL,ssl:process.env.NODE_ENV==='production'?{rejectUnauthorized:false}:false,max:10});
 const SECRET=process.env.SESSION_SECRET;
 if(!SECRET||!process.env.DATABASE_URL){console.error('Missing SESSION_SECRET or DATABASE_URL');process.exit(1);}
 app.set('trust proxy',1);
