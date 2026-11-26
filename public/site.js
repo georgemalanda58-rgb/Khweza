@@ -1,0 +1,9 @@
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function load(){try{const d=await fetch('/api/public').then(r=>r.json());
+document.querySelector('#rooms-grid').innerHTML=d.rooms.map(x=>'<article class="card">'+(x.image?'<img src="'+esc(x.image)+'" alt="'+esc(x.name)+'">':'')+'<div class="card-content"><h3>'+esc(x.name)+'</h3><p>'+esc(x.description)+'</p><strong>'+esc(x.price)+'</strong></div></article>').join('')||'<p>Please contact the hotel for room information.</p>';
+document.querySelector('#menu-list').innerHTML=d.menu.map(x=>'<div class="menu-item"><span><b>'+esc(x.name)+'</b><br><small>'+esc(x.description)+'</small></span><b>'+esc(x.price)+'</b></div>').join('')||'<p>Contact the hotel for the current menu.</p>';
+document.querySelector('#updates-list').innerHTML=d.updates.map(x=>'<article class="card card-content"><h3>'+esc(x.title)+'</h3><p>'+esc(x.body)+'</p></article>').join('')||'<p>Check back for hotel news and offers.</p>';
+}catch(e){console.error(e)}}
+document.querySelector('#year').textContent=new Date().getFullYear();
+document.querySelector('#enquiry').addEventListener('submit',async e=>{e.preventDefault();const out=document.querySelector('#form-result');const data=Object.fromEntries(new FormData(e.target));out.textContent='Sending…';try{const r=await fetch('/api/enquiries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const d=await r.json();out.textContent=d.message||d.error;if(r.ok)e.target.reset()}catch{out.textContent='Could not send your enquiry. Please call the hotel.'}});
+load();
