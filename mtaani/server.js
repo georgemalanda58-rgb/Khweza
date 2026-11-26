@@ -156,3 +156,5 @@ const publicDir=fs.existsSync(path.join(__dirname,'public'))?path.join(__dirname
 app.use(express.static(publicDir));
 app.get('*',(req,res)=>res.sendFile(path.join(publicDir,'index.html')));
 init().then(()=>app.listen(PORT,'0.0.0.0',()=>console.log('Mtaani listening on '+PORT))).catch(e=>{console.error(e);process.exit(1);});
+
+// Retry deployment with corrected business photo update handler.
