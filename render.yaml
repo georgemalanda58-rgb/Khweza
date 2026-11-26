@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: mtaani-api
+    name: mtaani-api-ohio
     runtime: node
     plan: free
     region: ohio
