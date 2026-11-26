@@ -22,8 +22,15 @@ CREATE TABLE IF NOT EXISTS updates(id INTEGER PRIMARY KEY, title TEXT NOT NULL, 
 CREATE TABLE IF NOT EXISTS menu(id INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT DEFAULT '', price TEXT DEFAULT '', published INTEGER DEFAULT 1);
 CREATE TABLE IF NOT EXISTS enquiries(id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT DEFAULT '', arrival TEXT DEFAULT '', departure TEXT DEFAULT '', message TEXT DEFAULT '', status TEXT DEFAULT 'New', created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 `);
-if (!db.prepare('SELECT id FROM users LIMIT 1').get() && process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
-  db.prepare('INSERT INTO users(email,password_hash,role) VALUES(?,?,?)').run(process.env.ADMIN_EMAIL.toLowerCase(), bcrypt.hashSync(process.env.ADMIN_PASSWORD, 12), 'admin');
+if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD && process.env.DEMO_ADMIN_BOOTSTRAP === 'true') {
+  const adminEmail = process.env.ADMIN_EMAIL.toLowerCase();
+  const existingAdmin = db.prepare("SELECT id FROM users WHERE email=?").get(adminEmail);
+  const passwordHash = bcrypt.hashSync(process.env.ADMIN_PASSWORD, 12);
+  if (existingAdmin) {
+    db.prepare("UPDATE users SET password_hash=?, role='admin' WHERE id=?").run(passwordHash, existingAdmin.id);
+  } else {
+    db.prepare("INSERT INTO users(email,password_hash,role) VALUES(?,?, 'admin')").run(adminEmail, passwordHash);
+  }
 }
 if (!db.prepare('SELECT id FROM updates LIMIT 1').get()) {
   const add = db.prepare('INSERT INTO updates(title,body,published) VALUES(?,?,0)');
