@@ -47,7 +47,7 @@ app.post('/api/auth/login',authLimit,async(req,res)=>{try{const mail=email(req.b
 const resetLimit=rateLimit({windowMs:60*60*1000,limit:5,standardHeaders:true,legacyHeaders:false});
 app.post('/api/auth/forgot-password',resetLimit,async(req,res)=>{try{
  const mail=email(req.body.email);
- if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(mail))return res.status(400).json({error:'Enter a valid email address.'});
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail))return res.status(400).json({error:'Enter a valid email address.'});
  const generic={message:'If an account exists for that email, password reset instructions will be sent.'};
  if(!process.env.RESEND_API_KEY||!process.env.RESEND_FROM_EMAIL)return res.status(503).json({error:'Password recovery email is not configured yet. The app owner must connect the email service first.'});
  const q=await pool.query("SELECT id,email,name FROM users WHERE email=$1 AND status='active'",[mail]);
