@@ -7,6 +7,7 @@ const cookieParser=require('cookie-parser');
 const {Pool}=require('pg');
 const path=require('path');
 const fs=require('fs');
+const crypto=require('crypto');
 const app=express();
 const PORT=process.env.PORT||10000;
 const pool=new Pool(process.env.PGHOST?{host:process.env.PGHOST,port:Number(process.env.PGPORT||5432),user:process.env.PGUSER,password:process.env.PGPASSWORD,database:process.env.PGDATABASE,max:10}: {connectionString:process.env.DATABASE_URL,ssl:process.env.NODE_ENV==='production'?{rejectUnauthorized:false}:false,max:10});
@@ -31,12 +32,35 @@ CREATE TABLE IF NOT EXISTS businesses(id BIGSERIAL PRIMARY KEY,owner_id BIGINT R
 CREATE TABLE IF NOT EXISTS enquiries(id BIGSERIAL PRIMARY KEY,business_id BIGINT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,customer_id BIGINT REFERENCES users(id) ON DELETE SET NULL,name VARCHAR(80) NOT NULL,email VARCHAR(254) NOT NULL,phone VARCHAR(40),message TEXT NOT NULL,status VARCHAR(20) NOT NULL DEFAULT 'new',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS reviews(id BIGSERIAL PRIMARY KEY,business_id BIGINT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,rating INT NOT NULL CHECK(rating BETWEEN 1 AND 5),body VARCHAR(1000),created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(business_id,user_id));
 CREATE TABLE IF NOT EXISTS favourites(user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,business_id BIGINT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(user_id,business_id));
+CREATE TABLE IF NOT EXISTS password_resets(id BIGSERIAL PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,token_hash TEXT NOT NULL UNIQUE,expires_at TIMESTAMPTZ NOT NULL,used_at TIMESTAMPTZ,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE INDEX IF NOT EXISTS password_resets_user_idx ON password_resets(user_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS businesses_search_idx ON businesses(status,category,area);
 CREATE INDEX IF NOT EXISTS enquiries_owner_idx ON enquiries(business_id,status);
 `);console.log('Mtaani database ready');}
 app.get('/health',async(req,res)=>{try{await pool.query('SELECT 1');res.json({ok:true,service:'Mtaani API',database:'connected'});}catch(e){res.status(503).json({ok:false});}});
 app.post('/api/auth/register',authLimit,async(req,res)=>{try{const name=clean(req.body.name),mail=email(req.body.email),password=String(req.body.password||'');if(name.length<2||name.length>80||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)||password.length<10||password.length>72)return res.status(400).json({error:'Enter a valid name and email. Password must be at least 10 characters.'});const hash=await bcrypt.hash(password,12);const q=await pool.query('INSERT INTO users(name,email,password_hash) VALUES($1,$2,$3) RETURNING id,name,email,role,status',[name,mail,hash]);setAuth(res,q.rows[0]);res.status(201).json({user:q.rows[0]});}catch(e){if(e.code==='23505')return res.status(409).json({error:'An account with that email already exists.'});console.error(e);res.status(500).json({error:'Could not create account.'});}});
 app.post('/api/auth/login',authLimit,async(req,res)=>{try{const mail=email(req.body.email),password=String(req.body.password||'');const q=await pool.query('SELECT id,name,email,role,status,password_hash FROM users WHERE email=$1',[mail]);if(!q.rowCount||q.rows[0].status!=='active'||!(await bcrypt.compare(password,q.rows[0].password_hash)))return res.status(401).json({error:'Email or password is incorrect.'});const u=q.rows[0];setAuth(res,u);delete u.password_hash;res.json({user:u});}catch(e){res.status(500).json({error:'Sign-in failed.'});}});
+
+const resetLimit=rateLimit({windowMs:60*60*1000,limit:5,standardHeaders:true,legacyHeaders:false});
+app.post('/api/auth/forgot-password',resetLimit,async(req,res)=>{try{
+ const mail=email(req.body.email);
+ if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(mail))return res.status(400).json({error:'Enter a valid email address.'});
+ const generic={message:'If an account exists for that email, password reset instructions will be sent.'};
+ if(!process.env.RESEND_API_KEY||!process.env.RESEND_FROM_EMAIL)return res.status(503).json({error:'Password recovery email is not configured yet. The app owner must connect the email service first.'});
+ const q=await pool.query("SELECT id,email,name FROM users WHERE email=$1 AND status='active'",[mail]);
+ if(q.rowCount){
+  const raw=crypto.randomBytes(32).toString('hex'),hash=crypto.createHash('sha256').update(raw).digest('hex');
+  await pool.query("UPDATE password_resets SET used_at=NOW() WHERE user_id=$1 AND used_at IS NULL",[q.rows[0].id]);
+  await pool.query("INSERT INTO password_resets(user_id,token_hash,expires_at) VALUES($1,$2,NOW()+INTERVAL '30 minutes')",[q.rows[0].id,hash]);
+  const base=(process.env.APP_URL||'https://mtaani-api-ohio.onrender.com').replace(/\\/$/,'');
+  const link=base+'/?reset='+raw;
+  const sent=await fetch('https://api.resend.com/emails',{method:'POST',headers:{'Authorization':'Bearer '+process.env.RESEND_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({from:process.env.RESEND_FROM_EMAIL,to:[mail],subject:'Reset your Mtaani password',html:'<p>Hello '+clean(q.rows[0].name).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))+',</p><p>Use the link below to set a new Mtaani password. It expires in 30 minutes and can only be used once.</p><p><a href="'+link+'">Reset my password</a></p><p>If you did not request this, ignore this email.</p>'})});
+  if(!sent.ok){console.error('Password reset email provider returned',sent.status);return res.status(502).json({error:'Could not send the recovery email. Please try again later.'});}
+ }
+ res.json(generic);
+}catch(e){console.error('Password reset request failed',e);res.status(500).json({error:'Could not process the password reset request.'});}});
+app.post('/api/auth/reset-password',resetLimit,async(req,res)=>{const token=String(req.body.token||''),password=String(req.body.password||'');if(!/^[a-f0-9]{64}$/.test(token)||password.length<10||password.length>72)return res.status(400).json({error:'Use a valid reset link and a password of at least 10 characters.'});const hash=crypto.createHash('sha256').update(token).digest('hex'),client=await pool.connect();try{await client.query('BEGIN');const q=await client.query("SELECT id,user_id FROM password_resets WHERE token_hash=$1 AND used_at IS NULL AND expires_at>NOW() FOR UPDATE",[hash]);if(!q.rowCount){await client.query('ROLLBACK');return res.status(400).json({error:'This reset link is invalid or has expired. Request a new one.'});}const pw=await bcrypt.hash(password,12);await client.query('UPDATE users SET password_hash=$1 WHERE id=$2',[pw,q.rows[0].user_id]);await client.query('UPDATE password_resets SET used_at=NOW() WHERE user_id=$1 AND used_at IS NULL',[q.rows[0].user_id]);await client.query('COMMIT');res.json({message:'Password updated. You can now sign in with your new password.'});}catch(e){await client.query('ROLLBACK');console.error(e);res.status(500).json({error:'Could not update the password.'});}finally{client.release();}});
+
 app.post('/api/auth/logout',(req,res)=>{res.clearCookie('mtaani_session',{path:'/'});res.json({ok:true});});
 app.get('/api/auth/me',auth,(req,res)=>res.json({user:req.user}));
 app.get('/api/admin/bootstrap-status',auth,async(req,res)=>{try{const allowedEmail=email(process.env.BOOTSTRAP_ADMIN_EMAIL);if(!allowedEmail||req.user.email!==allowedEmail)return res.json({available:false});const q=await pool.query("SELECT EXISTS(SELECT 1 FROM users WHERE role='admin') AS has_admin");res.json({available:!q.rows[0].has_admin});}catch(e){console.error(e);res.status(500).json({error:'Could not check administrator setup.'});}});
