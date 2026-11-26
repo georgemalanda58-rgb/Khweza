@@ -5,6 +5,7 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
@@ -14,7 +15,3 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
-    disk:
-      name: khweza-data
-      mountPath: /var/data
-      sizeGB: 1
