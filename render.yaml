@@ -3,6 +3,7 @@ services:
     name: mtaani-api
     runtime: node
     plan: free
+    region: ohio
     rootDir: mtaani
     buildCommand: npm install
     startCommand: npm start
