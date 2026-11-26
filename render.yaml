@@ -13,4 +13,13 @@ services:
       - key: SESSION_SECRET
         generateValue: true
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: mtaani-db
+          property: connectionString
+databases:
+  - name: mtaani-db
+    databaseName: mtaani_db_5u6y
+    user: mtaani_db_5u6y_user
+    plan: free
+    region: ohio
+    postgresMajorVersion: 18
