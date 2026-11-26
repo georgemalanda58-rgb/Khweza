@@ -1,6 +1,16 @@
 services:
   - type: web
-    name: mtaani
-    runtime: static
+    name: mtaani-api
+    runtime: node
+    plan: free
     rootDir: mtaani
-    staticPublishPath: .
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
