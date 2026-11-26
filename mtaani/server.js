@@ -52,7 +52,7 @@ app.post('/api/auth/forgot-password',resetLimit,async(req,res)=>{try{
   const raw=crypto.randomBytes(32).toString('hex'),hash=crypto.createHash('sha256').update(raw).digest('hex');
   await pool.query("UPDATE password_resets SET used_at=NOW() WHERE user_id=$1 AND used_at IS NULL",[q.rows[0].id]);
   await pool.query("INSERT INTO password_resets(user_id,token_hash,expires_at) VALUES($1,$2,NOW()+INTERVAL '30 minutes')",[q.rows[0].id,hash]);
-  const base=(process.env.APP_URL||'https://mtaani-api-ohio.onrender.com').replace(/\\/$/,'');
+  const base=(process.env.APP_URL||'https://mtaani-api-ohio.onrender.com').replace(/\/$/,'');
   const link=base+'/?reset='+raw;
   const sent=await fetch('https://api.resend.com/emails',{method:'POST',headers:{'Authorization':'Bearer '+process.env.RESEND_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({from:process.env.RESEND_FROM_EMAIL,to:[mail],subject:'Reset your Mtaani password',html:'<p>Hello '+clean(q.rows[0].name).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))+',</p><p>Use the link below to set a new Mtaani password. It expires in 30 minutes and can only be used once.</p><p><a href="'+link+'">Reset my password</a></p><p>If you did not request this, ignore this email.</p>'})});
   if(!sent.ok){console.error('Password reset email provider returned',sent.status);return res.status(502).json({error:'Could not send the recovery email. Please try again later.'});}
